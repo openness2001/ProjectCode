@@ -1,0 +1,178 @@
+---
+title: "Team project"
+output: pdf_document
+---
+
+
+```{r setup_chapter5, warning=FALSE, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(tidy = F)
+knitr::opts_chunk$set(cache = TRUE)
+library (magrittr, quietly = TRUE) #Used for pipes/dplyr
+library (dplyr, quietly = TRUE)
+library (ROI, quietly = TRUE)
+library (ROI.plugin.glpk, quietly = TRUE)
+library (ompr, quietly = TRUE)
+library (ompr.roi, quietly = TRUE)
+library (pander, quietly = TRUE)
+library (tufte, quietly = TRUE)
+library (tint)
+library (knitr)
+library(DiagrammeRsvg, quietly=TRUE) 
+library(rsvg, quietly=TRUE) 
+library(htmltools, quietly=TRUE)
+library(devtools)
+library (TRA)
+```
+
+
+```{r Project}
+NProject <- 6
+NPM  <- 6
+Goal <- 4
+ProjNames <- lapply(list(rep("Project_",NProject)),paste0,1:NProject) 
+                 # Project names
+PMNames<- lapply(list(rep("PM_",NPM)),
+                  paste0,LETTERS[1:NPM]) 
+                 # Project managet names
+
+g <- matrix(c(0.25, 0.25, 0.25, 0.25), ncol=Goal) 
+   #percent relative contribution of goals to the mission
+
+v <- matrix(c(36.51, 9.13, 5.51, 22.00, 3.08, 23.78, 
+              16.67, 16.67, 16.67, 16.67, 16.67, 16.67, 
+              16.67, 16.67, 16.67, 16.67, 16.67, 16.67, 
+              21.60, 17.58, 9.20, 21.57, 17.28, 12.77), ncol=Goal)
+   #percent relative contribution of projects to the goal
+
+a <- array(c(1, 0.9, 0.9, 0.9, 0.9, 0.9, 
+            1, 1, 1, 1, 1, 1,
+            1, 1, 1, 1, 1, 1, 
+            0.6, 0.6, 0.6, 1, 0.6, 0.6, 
+            1, 1, 1, 1, 1, 1,
+            1, 1, 1, 1, 1, 1,
+            
+            1, 0.9, 0.9, 0.9, 0.9, 0.9,
+            0.9, 1, 0.9, 0.9, 0.9, 0.9,
+            0.8, 0.8, 1, 0.8, 0.8, 0.8,
+            1, 1, 1, 1, 1, 1,
+            1, 1, 1, 1, 1, 1,
+            1, 1, 1, 1, 1, 1,
+            
+            1, 1, 1, 1, 1, 1,
+            1, 1, 1, 1, 1, 1,
+            0.95, 0.95, 1, 0.95, 0.95, 0.95,
+            1, 1, 1, 1, 1, 1,
+            1, 1, 1, 1, 1, 1,
+            1, 1, 1, 1, 1, 1,
+            
+            1, 0.7, 0.7, 0.7, 0.7, 0.7,
+            0.8, 1, 0.8, 0.8, 0.8, 0.8,
+            1, 1, 1, 1, 1, 1,
+            0.8, 0.8, 0.8, 1, 0.8, 0.8,
+            1, 1, 1, 1, 1, 1,
+            1, 1, 1, 1, 1, 1), dim=c(NPM, NProject, Goal))
+    #the coefficient of effectiveness
+
+w <- matrix(c(59.7, 97.8, 100, 99.3, 80.3, 47.2, 
+              63.4, 97.8, 100, 99.3, 87.2, 57.1,
+              63.9, 97.8, 100, 99.3, 84.5, 54.3,
+              54.6, 95.6, 100, 99.3, 77.4, 42.2,
+              76.1, 97.8, 100, 99.3, 96.5, 77.8,
+              71.9, 97.8, 100, 99.3, 95.7, 65.5), ncol=NProject)
+    #correspondence matrix
+
+```
+
+```{r Resource availability constraints}
+d <- matrix(c(276, 240, 240, 240, 276, 420,
+              240, 216, 216, 216, 240, 324,
+              208, 184, 184, 184, 208, 276,
+              170, 136, 136, 136, 170, 234,
+              208, 184, 184, 184, 208, 249,
+              156, 120, 120, 120, 156, 216), ncol=NProject)
+    #time demand of projects per planning horizon
+
+A <- matrix(c(372, 396, 336, 336, 371, 360), ncol=1)
+    #resource availability of project managers
+
+n <- matrix(c(1, 1, 1, 1, 1, 1))
+    #total number of exisitng projects
+    #"n" formula should be updated!! 
+
+s <- matrix(c(6, 6, 6, 6, 6, 6))
+    #switchover time-loss of project manager
+    #"n" formula should be updated!! 
+
+sc <- matrix(c(1, 0, 1, 1, 0, 0), ncol=1)
+    #special assignment constraints
+    #SC_A1 = SC_C1 = SC_D1 = 1
+    #SC_B1 = SC_E1 = SC_F1 = 0
+
+```
+
+
+```{r Project_Model}
+projectmodel <- MIPModel() %>%
+  add_variable (x[i, j], i=1:NPM, j=1:NProject,
+                type="binary") %>%
+  add_variable (r[i], i=1:NPM,
+                type="binary") %>%
+  add_variable (z[i], i=1:NPM,
+                type="binary") %>%
+  
+  
+  set_objective (sum_expr(a[i,j,k] * g[k] * v[j,k] * w[i,j] * x[i,j], 
+                          i=1:NPM, j=1:NProject, k=1:Goal ), "max") %>%
+  
+  
+  add_constraint (sum_expr(d[i,j] * x[i,j], j=1:NProject) + 1.5 * ((sum_expr(x[i,j], j=1:NProject) +  n[i]) + r[i] - 1) + 4.5 * z[i]
+                  <= A[i], i=1:NPM) %>% 
+      #Constraint 1) Resource availability constraints - 1
+  
+  add_constraint (1 - 0.25 * (sum_expr(x[i,j], j=1:NProject) +  n[i])
+                  >= r[i], i=1:NPM) %>%  
+      #Constraint 1) Resource availability constraints - 2
+    
+  add_constraint (((sum_expr(x[i,j], j=1:NProject) +  n[i]) + r[i] - 1) / 4
+                  <= z[i], i=1:NPM) %>% 
+      #Constraint 1) Resource availability constraints - 3
+  
+  add_constraint (((sum_expr(x[i,j], j=1:NProject) +  n[i]) + r[i] - 1)
+                  >= z[i], i=1:NPM) %>% 
+      #Constraint 1) Resource availability constraints - 4
+  
+  
+  #Constraint 2) Project type mix
+  
+  #Constraint 3) Project phase mix
+  
+  #Constraint 4) Maximum number of projects
+  
+  
+  add_constraint (sum_expr(sc[i] * x[i,1], i=1:NPM)
+                  == 1) %>% 
+      #Constraint 5) Special assignment constraints
+  
+  add_constraint (sum_expr(x[i,j], i=1:NPM)
+                  == 1, j=1:NProject) %>% 
+      #Constraint 6) Fixed assignment - Project assignment constraints
+
+  add_constraint (sum_expr(x[i,j], j=1:NProject)
+                  == 1, i=1:NPM) 
+      #Constraint 6) Fixed assignment - Project manager assignment constraints
+
+  #Constraint 7) Project interdependency
+
+  
+projectmodel_result <- solve_model(projectmodel, with_ROI(solver = "glpk"))
+
+x_solution <- t(as.matrix(as.numeric(get_solution(projectmodel_result, x[i,j])[,4])))
+
+projectmodel_result
+
+x_solution <- matrix(x_solution, ncol=NProject, dimnames=c(PMNames, ProjNames))
+pander(x_solution, caption="Project managers assignment results")
+
+
+```
