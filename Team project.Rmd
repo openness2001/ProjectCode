@@ -36,7 +36,7 @@ PMNames<- lapply(list(rep("PM_",NPM)),
                   paste0,LETTERS[1:NPM]) 
                  # Project managet names
 
-g <- matrix(c(25, 25, 25, 25), ncol=Goal) 
+g <- matrix(c(0.25, 0.25, 0.25, 0.25), ncol=Goal) 
    #percent relative contribution of goals to the mission
 
 v <- matrix(c(36.51, 9.13, 5.51, 22.00, 3.08, 23.78, 
@@ -98,11 +98,6 @@ A <- matrix(c(372, 396, 336, 336, 371, 360), ncol=1)
 
 n <- matrix(c(1, 1, 1, 1, 1, 1))
     #total number of exisitng projects
-    #"n" formula should be updated!! 
-
-s <- matrix(c(6, 6, 6, 6, 6, 6))
-    #switchover time-loss of project manager
-    #"n" formula should be updated!! 
 
 sc <- matrix(c(1, 0, 1, 1, 0, 0), ncol=1)
     #special assignment constraints
@@ -116,30 +111,58 @@ sc <- matrix(c(1, 0, 1, 1, 0, 0), ncol=1)
 projectmodel <- MIPModel() %>%
   add_variable (x[i, j], i=1:NPM, j=1:NProject,
                 type="binary") %>%
-  
+  add_variable (r[i], i=1:NPM,
+                type="binary") %>%
+  add_variable (z[i], i=1:NPM,
+                type="binary") %>%
   
   
   set_objective (sum_expr(a[i,j,k] * g[k] * v[j,k] * w[i,j] * x[i,j], 
                           i=1:NPM, j=1:NProject, k=1:Goal ), "max") %>%
   
   
-  
-  add_constraint (sum_expr(d[i,j] * x[i,j], j=1:NProject) + 6*12
+  add_constraint (sum_expr(d[i,j] * x[i,j], j=1:NProject) + 1.5 * ((sum_expr(x[i,j], j=1:NProject) +  n[i]) + r[i] - 1) + 4.5 * z[i]
                   <= A[i], i=1:NPM) %>% 
-      #Resource availability constraints
-      #S_i formula should be updated!!
+      #Constraint 1) Resource availability constraints - 1
+  
+  add_constraint (1 - 0.25 * (sum_expr(x[i,j], j=1:NProject) +  n[i])
+                  >= r[i], i=1:NPM) %>%  
+      #Constraint 1) Resource availability constraints - 2
+    
+  add_constraint (((sum_expr(x[i,j], j=1:NProject) +  n[i]) + r[i] - 1) / 4
+                  <= z[i], i=1:NPM) %>% 
+      #Constraint 1) Resource availability constraints - 3
+  
+  add_constraint (((sum_expr(x[i,j], j=1:NProject) +  n[i]) + r[i] - 1)
+                  >= z[i], i=1:NPM) %>% 
+      #Constraint 1) Resource availability constraints - 4
+  
+  
+  
+  #Constraint 2) Project type mix
+  
+  #Constraint 3) Project phase mix
+  
+  #Constraint 4) Maximum number of projects
+  
+  
   
   add_constraint (sum_expr(sc[i] * x[i,1], i=1:NPM)
                   == 1) %>% 
-      #Special assignment constraints
+      #Constraint 5) Special assignment constraints
   
   add_constraint (sum_expr(x[i,j], i=1:NPM)
                   == 1, j=1:NProject) %>% 
-      #Project assignment constraints
+      #Constraint 6) Fixed assignment - Project assignment constraints
 
   add_constraint (sum_expr(x[i,j], j=1:NProject)
                   == 1, i=1:NPM) 
-      #Project manager assignment constraints
+      #Constraint 6) Fixed assignment - Project manager assignment constraints
+
+
+
+  #Constraint 7) Project interdependency
+
 
   
 projectmodel_result <- solve_model(projectmodel, with_ROI(solver = "glpk"))
@@ -150,6 +173,5 @@ projectmodel_result
 
 x_solution <- matrix(x_solution, ncol=NProject, dimnames=c(PMNames, ProjNames))
 pander(x_solution, caption="Project managers assignment results")
-
 
 ```
